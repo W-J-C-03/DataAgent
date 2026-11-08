@@ -12,6 +12,7 @@ async def validate_sql(state:DataAgentState, runtime:Runtime[DataAgentContext]):
     writer({"type": "progress", "step": step, "status": "running"})
     try:
         sql = state['sql']
+        current_retry = state.get('retry_count', 0) # 获取当前次数，默认为0
         dw_mysql_repository: DWMySQLRepository = runtime.context['dw_mysql_repository']
         try:
             await dw_mysql_repository.validate_sql(sql)
@@ -21,7 +22,7 @@ async def validate_sql(state:DataAgentState, runtime:Runtime[DataAgentContext]):
         except Exception as e:
             logger.info(f"SQL syntax error: {str(e)}")
             writer({"type": "progress", "step": step, "status": "success"})
-            return {"error":str(e)}
+            return {"error":str(e), "retry_count": current_retry + 1}
     except Exception as e:
         logger.error(f"校验 SQL 失败：{e}")
         writer({"type": "progress", "step": step, "status": "error"})
