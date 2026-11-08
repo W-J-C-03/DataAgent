@@ -36,7 +36,7 @@ async def correct_sql(state:DataAgentState, runtime:Runtime[DataAgentContext]):
         })
         writer({"type": "progress", "step": step, "status": "success"})
         logger.info(f"修正 SQL 成功")
-        return {"sql": result}
+        return {"sql": result, "error": None}
     except Exception as e:
         logger.error(f"修正 SQL 失败：{e}")
         writer({"type": "progress", "step": step, "status": "error"})
