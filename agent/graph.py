@@ -22,6 +22,7 @@ from app.clients.embedding_client_manager import embedding_client_manager
 from app.clients.mysql_client_manager import meta_mysql_client_manager, dw_mysql_client_manager
 from app.clients.qdrant_client_manager import qdrant_client_manager
 from app.clients.es_client_manager import es_client_manager
+from app.core.log import logger
 from app.repositories.es import value_es_repository
 from app.repositories.es.value_es_repository import ValueESRepository
 from app.repositories.mysql.dw.dw_mysql_repository import DWMySQLRepository
@@ -60,10 +61,34 @@ graph_builder.add_edge("filter_metric", "add_extra_context")
 graph_builder.add_edge("add_extra_context", "generate_sql")
 graph_builder.add_edge("generate_sql", "validate_sql")
 
-graph_builder.add_conditional_edges(source= "validate_sql",
-                                    path= lambda state:"run_sql" if state.get("error") is None else "correct_sql",
-                                    path_map={"run_sql":"run_sql", "correct_sql":"correct_sql"})
-graph_builder.add_edge("correct_sql", "run_sql")
+def route_after_validate(state: DataAgentState):
+    error = state.get("error")
+    retry_count = state.get("retry_count", 0)
+    if error is None:
+        # 校验通过，去执行SQL
+        return "run_sql"
+
+    # 校验失败，但重试次数还没到3次，去纠正节点
+    if retry_count < 3:
+        logger.warning(f"SQL校验失败，准备第{retry_count}次重试...")
+        return "correct_sql"
+    # 校验失败，重试次数大于等于3，直接去抛异常
+    logger.error(f"SQL校验失败达到最大重试次数（3次），终止流程")
+    return END
+
+# graph_builder.add_conditional_edges(source= "validate_sql",
+#                                     path= lambda state:"run_sql" if state.get("error") is None else "correct_sql",
+#                                     path_map={"run_sql":"run_sql", "correct_sql":"correct_sql"})
+graph_builder.add_conditional_edges(
+    "validate_sql",
+    route_after_validate,
+    {
+        "correct_sql": "correct_sql",
+        "run_sql": "run_sql",
+        END: END
+    }
+)
+graph_builder.add_edge("correct_sql", "validate_sql")
 graph_builder.add_edge("run_sql", END)
 
 graph = graph_builder.compile()
