@@ -51,3 +51,4 @@ class DataAgentState(TypedDict):
 
     sql: str
     error: str # 检验是否出现错误，为了条件边设置
+    retry_count: int # 重试次数
